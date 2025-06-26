@@ -51,7 +51,7 @@ service cloud.firestore {
       allow delete: if (isAuthenticated() && isOwner(userId) && isProducer()) || isAdmin();
     }
 
-    // Products collection - PUBLIC READ with simplified queries
+    // Products collection - PUBLIC READ
     match /products/{productId} {
       // ANYONE can read ALL products (for public menu display)
       allow read: if true;
@@ -167,7 +167,7 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Global admin access (but avoid conflicts with specific rules)
+    // Global admin access
     match /{document=**} {
       allow read, write: if isAdmin();
     }

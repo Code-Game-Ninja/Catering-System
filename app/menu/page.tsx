@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { collection, query, where, getDocs, limit } from "firebase/firestore"
+import { collection, query, where, getDocs, limit, orderBy } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,8 +54,17 @@ export default function MenuPage() {
       console.log("Loading products from Firestore...")
       const productsRef = collection(db, "products")
 
-      // Use simple query without orderBy to avoid index requirement
-      const q = query(productsRef, where("status", "==", "active"), limit(100))
+      // Try to get all active products first
+      let q = query(productsRef, where("status", "==", "active"), limit(100))
+
+      try {
+        // Try with orderBy first
+        q = query(productsRef, where("status", "==", "active"), orderBy("createdAt", "desc"), limit(100))
+      } catch (indexError) {
+        console.log("Using query without orderBy due to missing index")
+        // Fallback to query without orderBy
+        q = query(productsRef, where("status", "==", "active"), limit(100))
+      }
 
       const querySnapshot = await getDocs(q)
       console.log("Query snapshot size:", querySnapshot.size)
@@ -67,7 +76,7 @@ export default function MenuPage() {
         loadedProducts.push({ id: doc.id, ...data } as Product)
       })
 
-      // Sort by createdAt in memory (client-side sorting)
+      // Sort by createdAt in memory if we couldn't use orderBy
       loadedProducts.sort((a, b) => {
         if (!a.createdAt || !b.createdAt) return 0
         const aTime = a.createdAt.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime()
@@ -79,29 +88,7 @@ export default function MenuPage() {
       setProducts(loadedProducts)
     } catch (error) {
       console.error("Error loading products:", error)
-
-      // Try fallback query without any filters if the main query fails
-      try {
-        console.log("Trying fallback query...")
-        const productsRef = collection(db, "products")
-        const fallbackQuery = query(productsRef, limit(100))
-        const fallbackSnapshot = await getDocs(fallbackQuery)
-
-        const fallbackProducts: Product[] = []
-        fallbackSnapshot.forEach((doc) => {
-          const data = doc.data()
-          // Only include active products
-          if (data.status === "active") {
-            fallbackProducts.push({ id: doc.id, ...data } as Product)
-          }
-        })
-
-        console.log("Fallback products loaded:", fallbackProducts.length)
-        setProducts(fallbackProducts)
-      } catch (fallbackError) {
-        console.error("Fallback query also failed:", fallbackError)
-        toast.error("Failed to load menu items. Please check your connection and try again.")
-      }
+      toast.error("Failed to load menu items. Please check your connection.")
     } finally {
       setIsLoading(false)
     }
@@ -114,8 +101,7 @@ export default function MenuPage() {
       filtered = filtered.filter(
         (product) =>
           product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-          (product.producerName && product.producerName.toLowerCase().includes(searchTerm.toLowerCase())),
+          (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase())),
       )
     }
 
@@ -146,11 +132,8 @@ export default function MenuPage() {
       }
 
       localStorage.setItem("cart", JSON.stringify(cart))
-
-      // Dispatch custom event for cart updates
-      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: cart }))
-
-      toast.success(`${product.name} added to cart!`)
+      window.dispatchEvent(new Event("storage"))
+      toast.success("Added to cart!")
     } catch (error) {
       console.error("Error adding to cart:", error)
       toast.error("Failed to add to cart")
@@ -252,14 +235,6 @@ export default function MenuPage() {
             <p className="text-cadet-gray">
               {products.length === 0 ? "No products available yet" : "Try adjusting your search or filters"}
             </p>
-            {products.length === 0 && (
-              <Button
-                onClick={loadProducts}
-                className="mt-4 bg-gradient-to-r from-jasmine to-orange-pantone text-gunmetal"
-              >
-                Retry Loading
-              </Button>
-            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
@@ -281,9 +256,7 @@ export default function MenuPage() {
                     }}
                   />
                   <div className="absolute top-4 left-4">
-                    <Badge className="bg-jasmine/20 text-jasmine border-jasmine/20 capitalize">
-                      {product.category.replace("_", " ")}
-                    </Badge>
+                    <Badge className="bg-jasmine/20 text-jasmine border-jasmine/20">{product.category}</Badge>
                   </div>
                   {product.isVegetarian && (
                     <div className="absolute top-4 right-4">

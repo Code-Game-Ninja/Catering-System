@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app"
-import { getAuth, connectAuthEmulator } from "firebase/auth"
-import { getFirestore, connectFirestoreEmulator, enableNetwork, disableNetwork } from "firebase/firestore"
-import { getStorage, connectStorageEmulator } from "firebase/storage"
+import { getAuth } from "firebase/auth"
+import { getFirestore } from "firebase/firestore"
+import { getStorage } from "firebase/storage"
 
 const firebaseConfig = {
   apiKey: "AIzaSyBwSvWNFcV2gNcRQbTkjTEhJ-S_joGXwWc",
@@ -21,33 +21,12 @@ export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const storage = getStorage(app)
 
-// Helper function to check if we're in development
-const isDevelopment = process.env.NODE_ENV === "development"
+// Enable offline persistence for Firestore
+import { enableNetwork, disableNetwork } from "firebase/firestore"
 
-// Connection status tracking
-let isOnline = true
+// Ensure Firebase is properly initialized
+const authInstance = getAuth(app)
+authInstance.useDeviceLanguage()
 
-// Network status monitoring
-if (typeof window !== "undefined") {
-  window.addEventListener("online", () => {
-    isOnline = true
-    enableNetwork(db).catch(console.error)
-  })
-
-  window.addEventListener("offline", () => {
-    isOnline = false
-    disableNetwork(db).catch(console.error)
-  })
-}
-
-// Configure auth settings
-if (isDevelopment) {
-  connectAuthEmulator(auth, "http://localhost:9099")
-  connectFirestoreEmulator(db, "localhost", 8080)
-  connectStorageEmulator(storage, "localhost", 9199)
-} else {
-  auth.useDeviceLanguage()
-}
-
-export { isOnline }
+export { enableNetwork, disableNetwork }
 export default app

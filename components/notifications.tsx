@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { onAuthStateChanged } from "firebase/auth"
-import { collection, query, where, onSnapshot, updateDoc, doc, limit } from "firebase/firestore"
+import { collection, query, where, onSnapshot, updateDoc, doc } from "firebase/firestore"
 import { auth, db } from "@/lib/firebase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -28,9 +28,6 @@ export function NotificationBell() {
       if (user) {
         setUser(user)
         loadNotifications(user.uid)
-      } else {
-        setUser(null)
-        setNotifications([])
       }
     })
 
@@ -38,42 +35,19 @@ export function NotificationBell() {
   }, [])
 
   const loadNotifications = (userId: string) => {
-    try {
-      const notificationsRef = collection(db, "notifications")
-      const q = query(
-        notificationsRef,
-        where("userId", "==", userId),
-        limit(50), // Limit to prevent large queries
-      )
+    const notificationsRef = collection(db, "notifications")
+    const q = query(notificationsRef, where("userId", "==", userId))
 
-      const unsubscribe = onSnapshot(
-        q,
-        (snapshot) => {
-          const notificationsList: Notification[] = []
-          snapshot.forEach((doc) => {
-            notificationsList.push({ id: doc.id, ...doc.data() } as Notification)
-          })
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notificationsList: Notification[] = []
+      snapshot.forEach((doc) => {
+        notificationsList.push({ id: doc.id, ...doc.data() } as Notification)
+      })
+      notificationsList.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0))
+      setNotifications(notificationsList)
+    })
 
-          // Sort notifications client-side by createdAt (newest first)
-          notificationsList.sort((a, b) => {
-            if (!a.createdAt || !b.createdAt) return 0
-            const aTime = a.createdAt.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime()
-            const bTime = b.createdAt.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt).getTime()
-            return bTime - aTime
-          })
-
-          setNotifications(notificationsList)
-        },
-        (error) => {
-          console.error("Error loading notifications:", error)
-          // Don't show error toast for notifications as it's not critical
-        },
-      )
-
-      return unsubscribe
-    } catch (error) {
-      console.error("Error setting up notifications listener:", error)
-    }
+    return unsubscribe
   }
 
   const markAsRead = async (notificationId: string) => {
@@ -90,22 +64,13 @@ export function NotificationBell() {
 
   const formatDate = (timestamp: any) => {
     if (!timestamp) return ""
-    try {
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    } catch (error) {
-      return ""
-    }
-  }
-
-  // Don't render if user is not authenticated
-  if (!user) {
-    return null
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
 
   return (
@@ -119,7 +84,7 @@ export function NotificationBell() {
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
           <span className="absolute -top-2 -right-2 bg-orange-pantone text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-            {unreadCount > 99 ? "99+" : unreadCount}
+            {unreadCount}
           </span>
         )}
       </Button>
