@@ -1,0 +1,69 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isValidImageFile() {
+      return request.resource.contentType.matches('image/.*') &&
+             request.resource.size < 10 * 1024 * 1024; // 10MB limit
+    }
+
+    // Profile photos - PUBLIC READ ACCESS
+    match /profile-photos/{userId}/{fileName} {
+      // ANYONE can read profile photos (no authentication required)
+      allow read: if true;
+      
+      // Users can upload/update their own profile photos
+      allow write: if isAuthenticated() && isOwner(userId) && isValidImageFile();
+      
+      // Users can delete their own profile photos
+      allow delete: if isAuthenticated() && isOwner(userId);
+    }
+
+    // Product images - PUBLIC READ ACCESS
+    match /products/{userId}/{fileName} {
+      // ANYONE can read product images (no authentication required)
+      allow read: if true;
+      
+      // Authenticated users can upload product images to their own folder
+      allow write: if isAuthenticated() && isOwner(userId) && isValidImageFile();
+      
+      // Users can delete their own product images
+      allow delete: if isAuthenticated() && isOwner(userId);
+    }
+
+    // Restaurant/Producer gallery images - PUBLIC READ ACCESS
+    match /restaurant-gallery/{userId}/{fileName} {
+      // ANYONE can read restaurant gallery images
+      allow read: if true;
+      
+      // Restaurant owners can upload gallery images
+      allow write: if isAuthenticated() && isOwner(userId) && isValidImageFile();
+      
+      // Restaurant owners can delete their gallery images
+      allow delete: if isAuthenticated() && isOwner(userId);
+    }
+
+    // Public assets - PUBLIC READ ACCESS
+    match /public/{fileName} {
+      // ANYONE can read public assets
+      allow read: if true;
+      
+      // Only authenticated users can write (for admin purposes)
+      allow write: if isAuthenticated();
+    }
+
+    // Fallback - Allow read access to any image file
+    match /{allPaths=**} {
+      allow read: if resource.contentType.matches('image/.*');
+      allow write: if false;
+    }
+  }
+}

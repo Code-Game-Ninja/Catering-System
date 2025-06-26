@@ -1,0 +1,175 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isProducer() {
+      return isAuthenticated() && getUserRole() == 'producer';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'admin';
+    }
+
+    // Users collection - PUBLIC READ for basic info
+    match /users/{userId} {
+      // ANYONE can read basic user info (for public profiles and producer names)
+      allow read: if true;
+      
+      // Users can create their own profile during signup
+      allow create: if isOwner(userId) && 
+        request.resource.data.keys().hasAll(['email', 'role', 'createdAt']) &&
+        (request.resource.data.role == 'user' || request.resource.data.role == 'producer');
+      
+      // Users can update their own profile (except role), admins can update any
+      allow update: if (isOwner(userId) && 
+        !('role' in request.resource.data.diff(resource.data).affectedKeys())) || isAdmin();
+      
+      // Users can delete their own profile, admins can delete any
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Restaurant Profiles collection - PUBLIC READ
+    match /restaurantProfiles/{userId} {
+      // ANYONE can read restaurant profiles (for public restaurant pages)
+      allow read: if true;
+      
+      // Producers can create/update their own profile, admins can manage all
+      allow create: if isAuthenticated() && isOwner(userId) && isProducer();
+      allow update: if (isAuthenticated() && isOwner(userId) && isProducer()) || isAdmin();
+      allow delete: if (isAuthenticated() && isOwner(userId) && isProducer()) || isAdmin();
+    }
+
+    // Products collection - PUBLIC READ
+    match /products/{productId} {
+      // ANYONE can read ALL products (for public menu display)
+      allow read: if true;
+      
+      // Only producers can create products for themselves, admins can create any
+      allow create: if isProducer() && 
+        request.resource.data.producerId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['name', 'price', 'category', 'producerId', 'producerName', 'status', 'createdAt']);
+      
+      // Producers can update their own products, admins can update any
+      allow update: if (isProducer() && resource.data.producerId == request.auth.uid) || isAdmin();
+      
+      // Producers can delete their own products, admins can delete any
+      allow delete: if (isProducer() && resource.data.producerId == request.auth.uid) || isAdmin();
+    }
+
+    // Orders collection
+    match /orders/{orderId} {
+      // Users can read their own orders, producers can read orders containing their products, admins can read all
+      allow read: if isAuthenticated() && 
+        (resource.data.userId == request.auth.uid || 
+         (isProducer() && request.auth.uid in resource.data.get('producerIds', []))) || isAdmin();
+      
+      // Authenticated users can create orders for themselves, admins can create any
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['userId', 'items', 'total', 'status', 'createdAt', 'producerIds']);
+      
+      // Users can update their own orders, producers can update order status for their products, admins can update any
+      allow update: if (isAuthenticated() && resource.data.userId == request.auth.uid) ||
+        (isProducer() && request.auth.uid in resource.data.get('producerIds', [])) || isAdmin();
+      
+      // Users can delete their own orders, producers can delete orders containing only their products, admins can delete any
+      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) ||
+        (isProducer() && request.auth.uid in resource.data.get('producerIds', [])) || isAdmin();
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Users can read their own notifications, admins can read all
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      
+      // System/authenticated users can create notifications, admins can create any
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['userId', 'type', 'title', 'message', 'isRead', 'createdAt']);
+      
+      // Users can update their own notifications (mark as read), admins can update any
+      allow update: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      
+      // Users can delete their own notifications, admins can delete any
+      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    // Reviews collection - PUBLIC READ
+    match /reviews/{reviewId} {
+      // ANYONE can read reviews (for public display)
+      allow read: if true;
+      
+      // Authenticated users can create reviews for themselves, admins can create any
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.keys().hasAll(['userId', 'productId', 'rating', 'comment', 'createdAt']);
+      
+      // Users can update their own reviews, admins can update any
+      allow update: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      
+      // Users can delete their own reviews, admins can delete any
+      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    // Categories collection - PUBLIC READ
+    match /categories/{categoryId} {
+      // ANYONE can read categories
+      allow read: if true;
+      
+      // Only admins can write categories
+      allow write: if isAdmin();
+    }
+
+    // Cart collection (for persistent cart storage)
+    match /carts/{userId} {
+      // Users can read their own cart, admins can read all
+      allow read: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+      
+      // Users can create/update their own cart, admins can manage all
+      allow write: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+      
+      // Users can delete their own cart, admins can delete all
+      allow delete: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+    }
+
+    // User preferences/settings
+    match /userPreferences/{userId} {
+      // Users can read their own preferences, admins can read all
+      allow read: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+      
+      // Users can create/update their own preferences, admins can manage all
+      allow write: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+      
+      // Users can delete their own preferences, admins can delete all
+      allow delete: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+    }
+
+    // Order tracking/history
+    match /orderHistory/{userId}/orders/{orderId} {
+      // Users can read their own order history, admins can read all
+      allow read: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+      
+      // System can create order history entries, admins can create any
+      allow create: if (isAuthenticated() && isOwner(userId)) || isAdmin();
+      
+      // Only admins can update/delete order history to maintain integrity
+      allow update, delete: if isAdmin();
+    }
+
+    // Global admin access
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
