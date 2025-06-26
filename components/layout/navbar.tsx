@@ -23,30 +23,45 @@ export default function Navbar() {
   const [userRole, setUserRole] = useState<string>("")
   const [cartCount, setCartCount] = useState(0)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed:", user?.email || "No user")
       setUser(user)
+
       if (user) {
         // Get user role from Firestore
         try {
           const userDoc = await getDoc(doc(db, "users", user.uid))
           if (userDoc.exists()) {
-            setUserRole(userDoc.data().role || "user")
+            const userData = userDoc.data()
+            setUserRole(userData.role || "user")
+            console.log("User role:", userData.role)
+          } else {
+            console.log("No user document found")
+            setUserRole("user")
           }
         } catch (error) {
           console.error("Error fetching user role:", error)
+          setUserRole("user")
         }
       } else {
         setUserRole("")
       }
+      setIsLoading(false)
     })
 
     const updateCartCount = () => {
-      const cart = JSON.parse(localStorage.getItem("cart") || "[]")
-      const totalItems = cart.reduce((sum: number, item: any) => sum + item.quantity, 0)
-      setCartCount(totalItems)
+      try {
+        const cart = JSON.parse(localStorage.getItem("cart") || "[]")
+        const totalItems = cart.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0)
+        setCartCount(totalItems)
+      } catch (error) {
+        console.error("Error updating cart count:", error)
+        setCartCount(0)
+      }
     }
 
     updateCartCount()
@@ -60,18 +75,10 @@ export default function Navbar() {
 
   const handleSignOut = async () => {
     try {
-      // Add loading state or transition effect
-      const signOutButton = document.querySelector("[data-signout-btn]")
-      if (signOutButton) {
-        signOutButton.textContent = "Signing out..."
-      }
-
       await signOut(auth)
-
-      // Add a smooth transition before redirect
-      setTimeout(() => {
-        router.push("/")
-      }, 500)
+      setUser(null)
+      setUserRole("")
+      router.push("/")
     } catch (error) {
       console.error("Error signing out:", error)
     }
@@ -86,18 +93,18 @@ export default function Navbar() {
 
   return (
     <nav className="sticky top-0 z-50 glass-dark border-b border-cadet-gray/20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
+        <div className="flex justify-between items-center h-14 sm:h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-jasmine to-orange-pantone rounded-lg flex items-center justify-center">
-              <span className="text-gunmetal font-bold text-lg">C</span>
+            <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-r from-jasmine to-orange-pantone rounded-lg flex items-center justify-center">
+              <span className="text-gunmetal font-bold text-sm sm:text-lg">C</span>
             </div>
-            <span className="text-2xl font-bold text-jasmine">CaterEase</span>
+            <span className="text-xl sm:text-2xl font-bold text-jasmine">CaterEase</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-6 lg:space-x-8">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -110,13 +117,17 @@ export default function Navbar() {
           </div>
 
           {/* Right side items */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 sm:space-x-4">
             {/* Cart */}
             <Link href="/cart" className="relative">
-              <Button variant="ghost" size="icon" className="text-cadet-gray hover:text-jasmine">
-                <ShoppingCart className="h-5 w-5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-cadet-gray hover:text-jasmine h-8 w-8 sm:h-10 sm:w-10"
+              >
+                <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
                 {cartCount > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-orange-pantone text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-orange-pantone text-white text-xs rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center text-[10px] sm:text-xs">
                     {cartCount}
                   </span>
                 )}
@@ -127,90 +138,93 @@ export default function Navbar() {
             {user && <NotificationBell />}
 
             {/* User Menu */}
-            {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={user.photoURL || ""} alt={user.displayName || ""} />
-                      <AvatarFallback className="bg-jasmine text-gunmetal">
-                        {user.displayName?.charAt(0) || user.email?.charAt(0) || "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56 bg-gunmetal/90 border-cadet-gray/20" align="end">
-                  <DropdownMenuItem asChild>
-                    <Link href="/profile" className="flex items-center text-cadet-gray hover:text-jasmine">
-                      <UserIcon className="mr-2 h-4 w-4" />
-                      Profile
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/orders" className="flex items-center text-cadet-gray hover:text-jasmine">
-                      <ShoppingCart className="mr-2 h-4 w-4" />
-                      Order History
-                    </Link>
-                  </DropdownMenuItem>
-                  {userRole === "admin" && (
-                    <>
-                      <DropdownMenuSeparator className="bg-cadet-gray/20" />
+            {!isLoading && (
+              <>
+                {user ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="relative h-6 w-6 sm:h-8 sm:w-8 rounded-full">
+                        <Avatar className="h-6 w-6 sm:h-8 sm:w-8">
+                          <AvatarImage src={user.photoURL || ""} alt={user.displayName || ""} />
+                          <AvatarFallback className="bg-jasmine text-gunmetal text-xs sm:text-sm">
+                            {user.displayName?.charAt(0) || user.email?.charAt(0) || "U"}
+                          </AvatarFallback>
+                        </Avatar>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-56 bg-gunmetal/90 border-cadet-gray/20" align="end">
                       <DropdownMenuItem asChild>
-                        <Link href="/admin" className="flex items-center text-cadet-gray hover:text-jasmine">
-                          <Crown className="mr-2 h-4 w-4" />
-                          Admin Dashboard
+                        <Link href="/profile" className="flex items-center text-cadet-gray hover:text-jasmine">
+                          <UserIcon className="mr-2 h-4 w-4" />
+                          Profile
                         </Link>
                       </DropdownMenuItem>
-                    </>
-                  )}
-                  {userRole === "producer" && (
-                    <>
-                      <DropdownMenuSeparator className="bg-cadet-gray/20" />
                       <DropdownMenuItem asChild>
-                        <Link
-                          href="/producer-dashboard"
-                          className="flex items-center text-cadet-gray hover:text-jasmine"
-                        >
-                          <Store className="mr-2 h-4 w-4" />
-                          Producer Dashboard
+                        <Link href="/orders" className="flex items-center text-cadet-gray hover:text-jasmine">
+                          <ShoppingCart className="mr-2 h-4 w-4" />
+                          Order History
                         </Link>
                       </DropdownMenuItem>
-                    </>
-                  )}
-                  <DropdownMenuSeparator className="bg-cadet-gray/20" />
-                  <DropdownMenuItem
-                    onClick={handleSignOut}
-                    className="text-orange-pantone hover:text-orange-pantone/80"
-                    data-signout-btn
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <div className="hidden md:flex items-center space-x-4">
-                <Link href="/auth">
-                  <Button variant="ghost" className="text-cadet-gray hover:text-jasmine">
-                    Sign In
-                  </Button>
-                </Link>
-                <Link href="/auth">
-                  <Button className="bg-gradient-to-r from-jasmine to-orange-pantone text-gunmetal hover:from-jasmine/90 hover:to-orange-pantone/90">
-                    Sign Up
-                  </Button>
-                </Link>
-              </div>
+                      {userRole === "admin" && (
+                        <>
+                          <DropdownMenuSeparator className="bg-cadet-gray/20" />
+                          <DropdownMenuItem asChild>
+                            <Link href="/admin" className="flex items-center text-cadet-gray hover:text-jasmine">
+                              <Crown className="mr-2 h-4 w-4" />
+                              Admin Dashboard
+                            </Link>
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {userRole === "producer" && (
+                        <>
+                          <DropdownMenuSeparator className="bg-cadet-gray/20" />
+                          <DropdownMenuItem asChild>
+                            <Link
+                              href="/producer-dashboard"
+                              className="flex items-center text-cadet-gray hover:text-jasmine"
+                            >
+                              <Store className="mr-2 h-4 w-4" />
+                              Producer Dashboard
+                            </Link>
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      <DropdownMenuSeparator className="bg-cadet-gray/20" />
+                      <DropdownMenuItem
+                        onClick={handleSignOut}
+                        className="text-orange-pantone hover:text-orange-pantone/80"
+                      >
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Sign Out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <div className="hidden sm:flex items-center space-x-2 lg:space-x-4">
+                    <Link href="/auth">
+                      <Button variant="ghost" className="text-cadet-gray hover:text-jasmine text-sm">
+                        Sign In
+                      </Button>
+                    </Link>
+                    <Link href="/auth">
+                      <Button className="bg-gradient-to-r from-jasmine to-orange-pantone text-gunmetal hover:from-jasmine/90 hover:to-orange-pantone/90 text-sm px-3 py-2">
+                        Sign Up
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </>
             )}
 
             {/* Mobile menu button */}
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden text-cadet-gray hover:text-jasmine"
+              className="md:hidden text-cadet-gray hover:text-jasmine h-8 w-8"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
-              {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {isMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
           </div>
         </div>
@@ -223,7 +237,7 @@ export default function Navbar() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="text-cadet-gray hover:text-jasmine transition-colors duration-200"
+                  className="text-cadet-gray hover:text-jasmine transition-colors duration-200 py-2"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   {link.label}

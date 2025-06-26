@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import {
@@ -42,6 +41,12 @@ export default function AuthPage() {
           return
         }
 
+        if (password.length < 6) {
+          toast.error("Password must be at least 6 characters")
+          return
+        }
+
+        console.log("Creating user with email:", email, "role:", role)
         userCredential = await createUserWithEmailAndPassword(auth, email, password)
 
         // Create user document with selected role
@@ -49,17 +54,47 @@ export default function AuthPage() {
           email: userCredential.user.email,
           role: role,
           createdAt: new Date(),
+          displayName: userCredential.user.displayName || "",
+          photoURL: userCredential.user.photoURL || "",
         })
 
+        console.log("User document created successfully")
         toast.success(`${role === "producer" ? "Restaurant" : "Customer"} account created successfully!`)
       } else {
+        console.log("Signing in with email:", email)
         userCredential = await signInWithEmailAndPassword(auth, email, password)
         toast.success("Signed in successfully!")
       }
 
-      router.push("/")
+      // Redirect after successful auth
+      setTimeout(() => {
+        router.push("/")
+      }, 1000)
     } catch (error: any) {
-      toast.error(error.message)
+      console.error("Auth error:", error)
+      let errorMessage = "An error occurred"
+
+      switch (error.code) {
+        case "auth/user-not-found":
+          errorMessage = "No account found with this email"
+          break
+        case "auth/wrong-password":
+          errorMessage = "Incorrect password"
+          break
+        case "auth/email-already-in-use":
+          errorMessage = "An account with this email already exists"
+          break
+        case "auth/weak-password":
+          errorMessage = "Password is too weak"
+          break
+        case "auth/invalid-email":
+          errorMessage = "Invalid email address"
+          break
+        default:
+          errorMessage = error.message
+      }
+
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -70,14 +105,18 @@ export default function AuthPage() {
     const provider = new GoogleAuthProvider()
 
     try {
+      console.log("Starting Google sign in...")
       const result = await signInWithPopup(auth, provider)
       const user = result.user
+
+      console.log("Google sign in successful:", user.email)
 
       // Check if user exists in Firestore
       const userDocRef = doc(db, "users", user.uid)
       const userDocSnap = await getDoc(userDocRef)
 
       if (!userDocSnap.exists()) {
+        console.log("Creating new user document for Google user")
         await setDoc(userDocRef, {
           email: user.email,
           displayName: user.displayName,
@@ -88,9 +127,14 @@ export default function AuthPage() {
       }
 
       toast.success("Signed in with Google!")
-      router.push("/")
+
+      // Redirect after successful auth
+      setTimeout(() => {
+        router.push("/")
+      }, 1000)
     } catch (error: any) {
-      toast.error(error.message)
+      console.error("Google auth error:", error)
+      toast.error(error.message || "Failed to sign in with Google")
     } finally {
       setIsLoading(false)
     }

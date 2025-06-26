@@ -37,6 +37,8 @@ export default function MenuPage() {
     { value: "mains", label: "Main Course" },
     { value: "desserts", label: "Desserts" },
     { value: "beverages", label: "Beverages" },
+    { value: "salads", label: "Salads" },
+    { value: "catering_packages", label: "Catering Packages" },
   ]
 
   useEffect(() => {
@@ -49,17 +51,23 @@ export default function MenuPage() {
 
   const loadProducts = async () => {
     try {
+      console.log("Loading products from Firestore...")
       const productsRef = collection(db, "products")
-      // Simple query - only filter by status, then sort in memory
+
+      // Use simple query without orderBy to avoid index requirement
       const q = query(productsRef, where("status", "==", "active"), limit(100))
+
       const querySnapshot = await getDocs(q)
+      console.log("Query snapshot size:", querySnapshot.size)
 
       const loadedProducts: Product[] = []
       querySnapshot.forEach((doc) => {
-        loadedProducts.push({ id: doc.id, ...doc.data() } as Product)
+        const data = doc.data()
+        console.log("Product data:", data)
+        loadedProducts.push({ id: doc.id, ...data } as Product)
       })
 
-      // Sort by createdAt in memory to avoid composite index
+      // Sort by createdAt in memory (client-side sorting)
       loadedProducts.sort((a, b) => {
         if (!a.createdAt || !b.createdAt) return 0
         const aTime = a.createdAt.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt).getTime()
@@ -67,10 +75,33 @@ export default function MenuPage() {
         return bTime - aTime // Descending order (newest first)
       })
 
+      console.log("Loaded products:", loadedProducts.length)
       setProducts(loadedProducts)
     } catch (error) {
       console.error("Error loading products:", error)
-      toast.error("Failed to load menu items")
+
+      // Try fallback query without any filters if the main query fails
+      try {
+        console.log("Trying fallback query...")
+        const productsRef = collection(db, "products")
+        const fallbackQuery = query(productsRef, limit(100))
+        const fallbackSnapshot = await getDocs(fallbackQuery)
+
+        const fallbackProducts: Product[] = []
+        fallbackSnapshot.forEach((doc) => {
+          const data = doc.data()
+          // Only include active products
+          if (data.status === "active") {
+            fallbackProducts.push({ id: doc.id, ...data } as Product)
+          }
+        })
+
+        console.log("Fallback products loaded:", fallbackProducts.length)
+        setProducts(fallbackProducts)
+      } catch (fallbackError) {
+        console.error("Fallback query also failed:", fallbackError)
+        toast.error("Failed to load menu items. Please check your connection and try again.")
+      }
     } finally {
       setIsLoading(false)
     }
@@ -83,7 +114,8 @@ export default function MenuPage() {
       filtered = filtered.filter(
         (product) =>
           product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase())),
+          (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          (product.producerName && product.producerName.toLowerCase().includes(searchTerm.toLowerCase())),
       )
     }
 
@@ -95,26 +127,34 @@ export default function MenuPage() {
   }
 
   const addToCart = (product: Product) => {
-    const cart = JSON.parse(localStorage.getItem("cart") || "[]")
-    const existingItem = cart.find((item: any) => item.id === product.id)
+    try {
+      const cart = JSON.parse(localStorage.getItem("cart") || "[]")
+      const existingItem = cart.find((item: any) => item.id === product.id)
 
-    if (existingItem) {
-      existingItem.quantity += 1
-    } else {
-      cart.push({
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        imageUrl: product.imageUrl,
-        producerName: product.producerName,
-        producerId: product.producerId,
-        quantity: 1,
-      })
+      if (existingItem) {
+        existingItem.quantity += 1
+      } else {
+        cart.push({
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          imageUrl: product.imageUrl,
+          producerName: product.producerName,
+          producerId: product.producerId,
+          quantity: 1,
+        })
+      }
+
+      localStorage.setItem("cart", JSON.stringify(cart))
+
+      // Dispatch custom event for cart updates
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: cart }))
+
+      toast.success(`${product.name} added to cart!`)
+    } catch (error) {
+      console.error("Error adding to cart:", error)
+      toast.error("Failed to add to cart")
     }
-
-    localStorage.setItem("cart", JSON.stringify(cart))
-    window.dispatchEvent(new Event("storage"))
-    toast.success("Added to cart!")
   }
 
   // Helper function to get a safe image URL
@@ -152,28 +192,29 @@ export default function MenuPage() {
         <div
           className="w-full h-full bg-cover bg-center opacity-20"
           style={{
-            backgroundImage: "url('/placeholder.svg?height=1080&width=1920')",
+            backgroundImage:
+              "url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')",
           }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-gunmetal/80 via-paynes-gray/80 to-cadet-gray/80" />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
         {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-6xl font-bold text-jasmine mb-4">
+        <div className="text-center mb-8 sm:mb-12">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-jasmine mb-4">
             Our <span className="text-gradient">Menu</span>
           </h1>
-          <p className="text-xl text-cadet-gray max-w-2xl mx-auto">
+          <p className="text-lg sm:text-xl text-cadet-gray max-w-2xl mx-auto">
             Discover delicious dishes from our partner restaurants and caterers
           </p>
         </div>
 
         {/* Search and Filters */}
         <Card className="glass border-cadet-gray/20 mb-8">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-              <div className="relative flex-1 max-w-md">
+              <div className="relative flex-1 max-w-md w-full">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cadet-gray h-4 w-4" />
                 <Input
                   placeholder="Search dishes..."
@@ -182,12 +223,13 @@ export default function MenuPage() {
                   className="pl-10 bg-gunmetal/20 border-cadet-gray/40 text-jasmine placeholder:text-paynes-gray"
                 />
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 justify-center">
                 {categories.map((category) => (
                   <Button
                     key={category.value}
                     variant={selectedCategory === category.value ? "default" : "outline"}
                     onClick={() => setSelectedCategory(category.value)}
+                    size="sm"
                     className={
                       selectedCategory === category.value
                         ? "bg-gradient-to-r from-jasmine to-orange-pantone text-gunmetal"
@@ -207,10 +249,20 @@ export default function MenuPage() {
           <div className="text-center py-12">
             <Search className="h-16 w-16 text-cadet-gray mx-auto mb-4" />
             <h3 className="text-2xl font-semibold text-jasmine mb-2">No dishes found</h3>
-            <p className="text-cadet-gray">Try adjusting your search or filters</p>
+            <p className="text-cadet-gray">
+              {products.length === 0 ? "No products available yet" : "Try adjusting your search or filters"}
+            </p>
+            {products.length === 0 && (
+              <Button
+                onClick={loadProducts}
+                className="mt-4 bg-gradient-to-r from-jasmine to-orange-pantone text-gunmetal"
+              >
+                Retry Loading
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filteredProducts.map((product) => (
               <Card
                 key={product.id}
@@ -229,7 +281,9 @@ export default function MenuPage() {
                     }}
                   />
                   <div className="absolute top-4 left-4">
-                    <Badge className="bg-jasmine/20 text-jasmine border-jasmine/20">{product.category}</Badge>
+                    <Badge className="bg-jasmine/20 text-jasmine border-jasmine/20 capitalize">
+                      {product.category.replace("_", " ")}
+                    </Badge>
                   </div>
                   {product.isVegetarian && (
                     <div className="absolute top-4 right-4">
@@ -240,14 +294,14 @@ export default function MenuPage() {
                     </div>
                   )}
                 </div>
-                <CardContent className="p-6">
+                <CardContent className="p-4 sm:p-6">
                   <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-xl font-semibold text-jasmine group-hover:text-orange-pantone transition-colors">
+                    <h3 className="text-lg sm:text-xl font-semibold text-jasmine group-hover:text-orange-pantone transition-colors">
                       {product.name}
                     </h3>
-                    <span className="text-2xl font-bold text-orange-pantone">${product.price}</span>
+                    <span className="text-xl sm:text-2xl font-bold text-orange-pantone">${product.price}</span>
                   </div>
-                  <p className="text-cadet-gray mb-4 line-clamp-2">
+                  <p className="text-cadet-gray mb-4 line-clamp-2 text-sm">
                     {product.description || "Delicious dish prepared with care"}
                   </p>
                   <div className="flex items-center justify-between mb-4">

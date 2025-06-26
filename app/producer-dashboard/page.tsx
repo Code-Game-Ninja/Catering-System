@@ -14,6 +14,7 @@ import {
   deleteDoc,
   limit,
   onSnapshot,
+  setDoc,
 } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { auth, db, storage } from "@/lib/firebase"
@@ -293,18 +294,18 @@ export default function RestaurantDashboard() {
         updatedAt: new Date(),
       }
 
-      if (restaurantProfile?.id) {
-        await updateDoc(doc(db, "restaurantProfiles", user.uid), profileData)
-        toast.success("Restaurant profile updated successfully!")
-      } else {
-        await addDoc(collection(db, "restaurantProfiles"), {
+      // Always use the user's UID as the document ID for restaurant profiles
+      const profileRef = doc(db, "restaurantProfiles", user.uid)
+      await updateDoc(profileRef, profileData).catch(async () => {
+        // If document doesn't exist, create it
+        await setDoc(profileRef, {
           ...profileData,
           userId: user.uid,
           createdAt: new Date(),
         })
-        toast.success("Restaurant profile created successfully!")
-      }
+      })
 
+      toast.success("Restaurant profile saved successfully!")
       setIsProfileModalOpen(false)
       await loadRestaurantProfile(user.uid)
     } catch (error) {
@@ -483,16 +484,16 @@ export default function RestaurantDashboard() {
         <div className="absolute inset-0 bg-gradient-to-br from-gunmetal/80 via-paynes-gray/80 to-cadet-gray/80" />
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="relative z-10 max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-4 sm:py-8">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 space-y-4 sm:space-y-0">
           <div>
-            <h1 className="text-4xl md:text-5xl font-bold text-jasmine mb-2 animate-float">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-jasmine mb-2 animate-float">
               Producer <span className="text-gradient">Dashboard</span>
             </h1>
-            <p className="text-xl text-cadet-gray">Welcome back, {restaurantProfile?.name || "Producer"}</p>
+            <p className="text-lg sm:text-xl text-cadet-gray">Welcome back, {restaurantProfile?.name || "Producer"}</p>
           </div>
-          <div className="flex space-x-4">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
             <Button
               onClick={exportData}
               variant="outline"
@@ -645,20 +646,36 @@ export default function RestaurantDashboard() {
 
         {/* Dashboard Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-gunmetal/20">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal">
-              Overview
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 bg-gunmetal/20 h-auto">
+            <TabsTrigger
+              value="overview"
+              className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal text-xs sm:text-sm py-2"
+            >
+              <span className="hidden sm:inline">Overview</span>
+              <span className="sm:hidden">Home</span>
             </TabsTrigger>
-            <TabsTrigger value="orders" className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal">
+            <TabsTrigger
+              value="orders"
+              className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal text-xs sm:text-sm py-2"
+            >
               Orders
             </TabsTrigger>
-            <TabsTrigger value="products" className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal">
+            <TabsTrigger
+              value="products"
+              className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal text-xs sm:text-sm py-2"
+            >
               Products
             </TabsTrigger>
-            <TabsTrigger value="analytics" className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal">
+            <TabsTrigger
+              value="analytics"
+              className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal text-xs sm:text-sm py-2 hidden sm:block"
+            >
               Analytics
             </TabsTrigger>
-            <TabsTrigger value="profile" className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal">
+            <TabsTrigger
+              value="profile"
+              className="data-[state=active]:bg-jasmine data-[state=active]:text-gunmetal text-xs sm:text-sm py-2 hidden sm:block"
+            >
               Profile
             </TabsTrigger>
           </TabsList>
@@ -667,7 +684,7 @@ export default function RestaurantDashboard() {
           <TabsContent value="overview">
             <div className="space-y-6">
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
                 <Card className="glass border-cadet-gray/20">
                   <CardContent className="p-6 text-center">
                     <DollarSign className="h-8 w-8 text-jasmine mx-auto mb-2" />
